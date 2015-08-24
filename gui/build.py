@@ -21,7 +21,7 @@ class Build(QtGui.QWidget):
     """Widget handling toolchain and building
     Handles prompting user to download toolchain if it does not exists"""
 
-    toolchain_url = '.json'
+    toolchain_url = 'https://raw.githubusercontent.com/adongy/chdk_builder/master/toolchain.json'
 
     def __init__(self, parent=None, path=''):
         super(Build, self).__init__(parent)
