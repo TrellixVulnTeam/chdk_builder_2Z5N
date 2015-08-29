@@ -4,6 +4,11 @@ import logging
 import io
 import tarfile
 import json
+import sys
+try:
+    import lzma
+except ImportError:
+    from backports import lzma
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +28,12 @@ class Build(QtGui.QWidget):
 
     toolchain_url = 'https://raw.githubusercontent.com/adongy/chdk_builder/master/toolchain.json'
 
-    def __init__(self, parent=None, path=''):
+    def __init__(self, parent=None, path=None):
         super(Build, self).__init__(parent)
 
         self._setupUI()
+        if path is None:
+            path = QtCore.QCoreApplication.applicationDirPath()
         self.rootPath = QtCore.QDir(path)
         self.manager = QtNetwork.QNetworkAccessManager(self)
         self.manager.finished.connect(self.handleReply)
@@ -42,11 +49,13 @@ class Build(QtGui.QWidget):
         self.setLayout(layout)
 
     def _checkToolchain(self):
-        if not self.rootPath.exists('bin'):
+        if not self.rootPath.exists('toolchain'):
             self.promptToolchainDownload()
         else:
             path = QtCore.QDir(self.rootPath)
-            path.cd('bin')
+            if not path.cd('toolchain/bin'):
+                logger.error('Could not change to toolchain directory')
+                raise Exception('Error when loading toolchains')
             toolchains = {}
             for file in path.entryList(['arm-*-gcc-[0-9]*']):
                 ver = file.split('-')[-1]
@@ -68,20 +77,22 @@ class Build(QtGui.QWidget):
         download(self.manager, self.toolchain_url, 'manifest')
 
     def handleReply(self, reply):
-        response = unicode(reply.readAll())
+        response = reply.readAll()
         attr = reply.request().attribute(QtNetwork.QNetworkRequest.User)
         if attr == 'manifest':
-            download_links = json.loads(response)
-            avail_toolchains = [tc for tc in download_links.keys() if tc != 'default']
-            default = avail_toolchains.index(download_links['default']) if 'default' in download_links else 0
-            select_toolchain, ok = QtGui.QInputDialog.getItem(self, 'Select toolchain to download',
-                                                              'Toolchain', avail_toolchains, default, False)
-            if ok and select_toolchain:
-                download(self.manager, download_links[select_toolchain], 'toolchain')
+            download_links = json.loads(str(response))
+            if sys.platform not in download_links:
+                logger.error('Platform %s not found in available toolchains %s', sys.platform, download_links)
+                raise Exception('Count not find a toolchain for your OS')
+            reply = QtGui.QMessageBox.question(self, "Download toolchain ?",
+                                               'No toolchain found! Download it ?',
+                                               QtGui.QMessageBox.Yes | QtGui.QMessageBox.No)
+            if reply == QtGui.QMessageBox.Yes:
+                download(self.manager, download_links[sys.platform], 'toolchain')
         elif attr == 'toolchain':
             # uncompress
-            with io.BytesIO(response) as fileobj, tarfile.open(fileobj=fileobj, mode='r:gz') as tar:
-                tar.extractall('{}/toolchain/'.format(QtCore.QCoreApplication.applicationDirPath()))
+            with lzma.open(io.BytesIO(bytes(response))) as fileobj, tarfile.open(fileobj=fileobj) as tar:
+                tar.extractall('{}/toolchain/'.format(self.rootPath))
             QtGui.QMessageBox.information(self, "Download complete", "Finished downloading toolchain!")
 
         reply.deleteLater()

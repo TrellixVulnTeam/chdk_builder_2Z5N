@@ -1,4 +1,3 @@
 {
-  "default": "hybrid",
-  "hybrid": "https://github.com/adongy/chdk_builder/releases/download/v0.1/gcc464-493env-forCHDK-sfx.exe"
+  "win32": "https://github.com/adongy/chdk_builder/releases/download/v0.1/gcc464-493env.tar.xz"
 }
